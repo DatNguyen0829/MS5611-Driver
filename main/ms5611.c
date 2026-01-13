@@ -19,12 +19,20 @@ static const char *TAG = "example";
 #define MS5611_D1_OSR_4096 0x48
 #define MS5611_D2_OSR_4096 0x58
 
-uint16_t prom_data[7];
+//--Calculation Variables--
+uint16_t prom_data[7] = {0};
 uint32_t D1;
 uint32_t D2;
 
 int32_t dT;
 int32_t TEMP;
+
+int64_t OFF;
+int64_t SENS;
+int32_t P;
+int32_t T2 = 0;
+int64_t OFF2 = 0;
+int64_t SENS2 = 0;
 
 static void i2c_master_init(i2c_master_bus_handle_t *bus_handle, i2c_master_dev_handle_t *dev_handle)
 {
@@ -52,7 +60,7 @@ static void i2c_master_init(i2c_master_bus_handle_t *bus_handle, i2c_master_dev_
 
 }
 
-static void read_prom(i2c_master_dev_handle_t dev_handle)
+static void ms5611_read_prom(i2c_master_dev_handle_t dev_handle)
 {
         for (int i = 0; i < 6; i++) {
             // Send PROM read command
@@ -66,7 +74,7 @@ static void read_prom(i2c_master_dev_handle_t dev_handle)
         }
 }
 
-static void read_conversion(i2c_master_dev_handle_t dev_handle, uint8_t cmd, uint32_t *result)
+static void ms5611_read_conversion(i2c_master_dev_handle_t dev_handle, uint8_t cmd, uint32_t *result)
 {
     ESP_LOGI(TAG, "Sending conversion command: 0x%02X", cmd);
     ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, &cmd, 1, -1));
@@ -83,11 +91,38 @@ static void read_conversion(i2c_master_dev_handle_t dev_handle, uint8_t cmd, uin
     *result = ((uint32_t) data[0] << 16) | (uint32_t) (data[1] << 8) | (uint32_t) data[2];
 }
 
-static void calculateTemperature()
+static void ms5611_calculateTemperature()
 {
     dT = D2 - (((uint32_t) prom_data[5])<<8);
     int64_t calcTemp = 2000 + ((int64_t)dT * prom_data[6]) / (1LL << 23);
     TEMP = (int32_t) calcTemp;
+
+    //Compensate for low Temp
+    if(TEMP<2000)
+    {
+        T2 = (dT*dT)/(1LL << 31);
+        OFF2 = 5*(TEMP-2000)*(TEMP-2000)/2;
+        SENS2 = 5*(TEMP-2000)*(TEMP-2000)/4;
+    }
+
+    if(TEMP<-1500)
+    {
+        OFF2 += 7*(TEMP+1500)*(TEMP+1500);
+        SENS2 += 11*(TEMP+1500)*(TEMP+1500)/2;
+    }
+
+    //Final Temp result
+    TEMP -= T2;
+}
+
+static void ms5611_calculatePressure()
+{
+    OFF = (((uint32_t) prom_data[2])<<16) + (prom_data[4]*((int64_t) dT))/(1LL << 7);
+    SENS = (((uint32_t) prom_data[1])<<15) + (prom_data[3]*((int64_t) dT))/(1LL << 8);
+    OFF -= OFF2;
+    SENS -= SENS2;
+    //Final Pressure Result
+    P = (D1*(SENS/(1LL << 21)) - OFF)/(1LL << 15);
 }
 
 void app_main(void)
@@ -100,15 +135,19 @@ void app_main(void)
     ESP_LOGI(TAG, "I2C Master initialized and MS5611 device added.");
 
     //Read device Prom values
-    read_prom(dev_handle);
+    ms5611_read_prom(dev_handle);
 
     while(1){
         //Read D1 conversion result
-        read_conversion(dev_handle, MS5611_D1_OSR_4096, &D1);
+        ms5611_read_conversion(dev_handle, MS5611_D1_OSR_4096, &D1);
         //Read D2 conversion result
-        read_conversion(dev_handle, MS5611_D2_OSR_4096, &D2);
+        ms5611_read_conversion(dev_handle, MS5611_D2_OSR_4096, &D2);
+        //Calculates Temperature 
+        ms5611_calculateTemperature();
+        ms5611_calculatePressure();
 
-
+        printf("The temparture is %d", TEMP);
+        prinf("The pressure is %d", P);
     }
 
 }
