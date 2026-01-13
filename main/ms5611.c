@@ -23,6 +23,9 @@ uint16_t prom_data[7];
 uint32_t D1;
 uint32_t D2;
 
+int32_t dT;
+int32_t TEMP;
+
 static void i2c_master_init(i2c_master_bus_handle_t *bus_handle, i2c_master_dev_handle_t *dev_handle)
 {
     //Set I2C master bus configuration
@@ -80,12 +83,11 @@ static void read_conversion(i2c_master_dev_handle_t dev_handle, uint8_t cmd, uin
     *result = ((uint32_t) data[0] << 16) | (uint32_t) (data[1] << 8) | (uint32_t) data[2];
 }
 
-static int32_t calculateTemperature()
+static void calculateTemperature()
 {
-    int32_t dT = D2 - (((uint32_t) prom_data[5])<<8);
-    int64_t TEMP = 2000 + ((int64_t)dT * prom_data[6]) / (1LL << 23);
-
-    return (int32_t) TEMP;
+    dT = D2 - (((uint32_t) prom_data[5])<<8);
+    int64_t calcTemp = 2000 + ((int64_t)dT * prom_data[6]) / (1LL << 23);
+    TEMP = (int32_t) calcTemp;
 }
 
 void app_main(void)
