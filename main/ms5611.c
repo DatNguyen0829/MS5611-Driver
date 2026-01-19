@@ -110,15 +110,15 @@ static void ms5611_calculateTemperature()
     //Compensate for low Temp
     if(TEMP<2000)
     {
-        T2 = (dT*dT)/(1LL << 31);
-        OFF2 = 5*(TEMP-2000)*(TEMP-2000)/2;
-        SENS2 = 5*(TEMP-2000)*(TEMP-2000)/4;
+        T2 = (int32_t)(((int64_t)dT * dT) >> 31);
+        OFF2 = 5 * ((int64_t)TEMP-2000) * ((int64_t)TEMP-2000)/2;
+        SENS2 = 5 * ((int64_t)TEMP-2000) * ((int64_t)TEMP-2000)/4;
     }
 
     if(TEMP<-1500)
     {
-        OFF2 += 7*(TEMP+1500)*(TEMP+1500);
-        SENS2 += 11*(TEMP+1500)*(TEMP+1500)/2;
+        OFF2 += 7 * ((int64_t)+1500) * ((int64_t)TEMP+1500);
+        SENS2 += 11 * ((int64_t)TEMP+1500) * ((int64_t)TEMP+1500)/2;
     }
 
     //Final Temp result
@@ -127,12 +127,13 @@ static void ms5611_calculateTemperature()
 
 static void ms5611_calculatePressure()
 {
-    OFF = (((uint32_t) prom_data[2])<<16) + (prom_data[4]*((int64_t) dT))/(1LL << 7);
-    SENS = (((uint32_t) prom_data[1])<<15) + (prom_data[3]*((int64_t) dT))/(1LL << 8);
-    OFF -= OFF2;
+    OFF  = ((int64_t)prom_data[2] << 16) + ((int64_t)prom_data[4] * dT) / (1LL << 7);
+    SENS = ((int64_t)prom_data[1] << 15) + ((int64_t)prom_data[3] * dT) / (1LL << 8);
+
+    OFF  -= OFF2;
     SENS -= SENS2;
-    //Final Pressure Result
-    P = ((D1*(SENS)/(1LL << 21)) - OFF)/(1LL << 15);
+
+    P = (int32_t)(((((int64_t)D1 * SENS) / (1LL << 21)) - OFF) / (1LL << 15));
 }
 
 void app_main(void)
@@ -158,8 +159,8 @@ void app_main(void)
         ms5611_calculateTemperature();
         ms5611_calculatePressure();
 
-        printf("The temparture is %d\n", TEMP);
-        prinf("The pressure is %d", P);
+        printf("The temparture is %ld\n", TEMP);
+        printf("The pressure is %ld", P);
     }
 
 }
